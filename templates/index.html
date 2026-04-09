@@ -1,0 +1,1036 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PVSS — Predictive Virtual Sun Visor System</title>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #050810;
+    --panel: #080d1a;
+    --panel2: #0a1020;
+    --border: #0d2a4a;
+    --accent: #00d4ff;
+    --accent2: #0066ff;
+    --warn: #ff4444;
+    --ok: #00ff88;
+    --sun: #ffcc00;
+    --sun2: #ff8800;
+    --dim: #1a3a5c;
+    --text: #c8e8ff;
+    --muted: #3a6080;
+    --mono: 'Share Tech Mono', monospace;
+    --display: 'Orbitron', sans-serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--mono);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background:
+      radial-gradient(ellipse 80% 50% at 50% -10%, rgba(0,100,255,0.08) 0%, transparent 60%),
+      repeating-linear-gradient(0deg, transparent, transparent 39px, rgba(0,100,255,0.03) 40px),
+      repeating-linear-gradient(90deg, transparent, transparent 39px, rgba(0,100,255,0.03) 40px);
+    pointer-events: none; z-index: 0;
+  }
+
+  .scanline {
+    position: fixed; inset: 0;
+    background: repeating-linear-gradient(
+      0deg, transparent, transparent 2px,
+      rgba(0,0,0,0.08) 2px, rgba(0,0,0,0.08) 4px
+    );
+    pointer-events: none; z-index: 1000;
+  }
+
+  header {
+    position: relative; z-index: 10;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 28px;
+    border-bottom: 1px solid var(--border);
+    background: linear-gradient(90deg, rgba(0,20,50,0.95), rgba(5,8,16,0.95));
+    backdrop-filter: blur(10px);
+  }
+
+  .logo {
+    display: flex; align-items: center; gap: 14px;
+  }
+
+  .logo-icon {
+    width: 38px; height: 38px;
+    border: 2px solid var(--accent);
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    position: relative;
+    box-shadow: 0 0 18px rgba(0,212,255,0.4), inset 0 0 10px rgba(0,212,255,0.1);
+  }
+
+  .logo-icon::before {
+    content: '☀';
+    font-size: 18px;
+    animation: pulse-sun 2s ease-in-out infinite;
+  }
+
+  @keyframes pulse-sun {
+    0%, 100% { color: var(--sun); text-shadow: 0 0 10px var(--sun); }
+    50% { color: var(--sun2); text-shadow: 0 0 20px var(--sun2); }
+  }
+
+  .logo-text h1 {
+    font-family: var(--display);
+    font-size: 13px; font-weight: 900;
+    letter-spacing: 3px;
+    color: var(--accent);
+    text-shadow: 0 0 20px rgba(0,212,255,0.5);
+  }
+
+  .logo-text p {
+    font-size: 9px; color: var(--muted);
+    letter-spacing: 2px; margin-top: 2px;
+  }
+
+  .header-right {
+    display: flex; align-items: center; gap: 24px;
+  }
+
+  .status-pill {
+    display: flex; align-items: center; gap: 8px;
+    padding: 6px 14px;
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    font-size: 10px; letter-spacing: 1px;
+    background: rgba(0,0,0,0.4);
+  }
+
+  .led {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--muted);
+    transition: background 0.4s, box-shadow 0.4s;
+  }
+  .led.active { background: var(--ok); box-shadow: 0 0 10px var(--ok); animation: blink 1s infinite; }
+  .led.warn { background: var(--warn); box-shadow: 0 0 10px var(--warn); animation: blink 0.5s infinite; }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+  .sys-time {
+    font-family: var(--display);
+    font-size: 14px; color: var(--accent);
+    letter-spacing: 2px;
+  }
+
+  main {
+    position: relative; z-index: 2;
+    display: grid;
+    grid-template-columns: 280px 1fr 260px;
+    grid-template-rows: auto 1fr;
+    gap: 12px;
+    padding: 12px 16px 16px;
+    min-height: calc(100vh - 70px);
+  }
+
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 14px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .panel::before {
+    content: '';
+    position: absolute; top: 0; left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--accent2), transparent);
+    opacity: 0.5;
+  }
+
+  .panel-title {
+    font-family: var(--display);
+    font-size: 8px; font-weight: 700;
+    letter-spacing: 3px; color: var(--accent);
+    text-transform: uppercase;
+    margin-bottom: 14px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 8px;
+  }
+
+  .panel-title::before {
+    content: '';
+    width: 4px; height: 4px;
+    background: var(--accent); border-radius: 50%;
+    box-shadow: 0 0 6px var(--accent);
+  }
+
+  /* Controls */
+  .control-group { margin-bottom: 16px; }
+  .control-group label {
+    font-size: 9px; color: var(--muted);
+    letter-spacing: 2px; display: block;
+    margin-bottom: 6px; text-transform: uppercase;
+  }
+
+  .ctrl-row { display: flex; gap: 6px; align-items: center; }
+
+  input[type=number], input[type=time], input[type=range] {
+    background: var(--panel2);
+    border: 1px solid var(--dim);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 12px;
+    padding: 7px 10px;
+    border-radius: 4px;
+    width: 100%;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+
+  input[type=number]:focus, input[type=time]:focus {
+    border-color: var(--accent2);
+    box-shadow: 0 0 0 1px rgba(0,102,255,0.3);
+  }
+
+  input[type=range] {
+    padding: 0; height: 4px;
+    -webkit-appearance: none;
+    cursor: pointer;
+    accent-color: var(--accent);
+  }
+
+  .range-val {
+    font-size: 11px; color: var(--accent);
+    white-space: nowrap; min-width: 42px;
+    text-align: right;
+  }
+
+  .btn {
+    width: 100%; padding: 10px;
+    background: transparent;
+    border: 1px solid var(--accent2);
+    color: var(--accent);
+    font-family: var(--display);
+    font-size: 9px; letter-spacing: 3px;
+    text-transform: uppercase;
+    cursor: pointer;
+    border-radius: 4px;
+    transition: all 0.2s;
+    margin-top: 4px;
+  }
+
+  .btn:hover {
+    background: rgba(0,102,255,0.15);
+    box-shadow: 0 0 16px rgba(0,102,255,0.3);
+  }
+
+  .btn.active-anim {
+    background: rgba(0,255,136,0.1);
+    border-color: var(--ok);
+    color: var(--ok);
+  }
+
+  /* Visor canvas area */
+  .visor-panel {
+    grid-column: 2;
+    grid-row: 1 / 3;
+    display: flex; flex-direction: column;
+  }
+
+  .visor-wrap {
+    flex: 1;
+    display: flex; align-items: center; justify-content: center;
+    position: relative;
+    padding: 10px;
+  }
+
+  #visorCanvas {
+    width: 100%; max-width: 640px;
+    height: auto; aspect-ratio: 16/9;
+    border-radius: 4px;
+    display: block;
+    box-shadow: 0 0 40px rgba(0,100,255,0.1);
+  }
+
+  .visor-overlay-labels {
+    position: absolute; top: 20px; left: 50%;
+    transform: translateX(-50%);
+    display: flex; gap: 12px;
+    pointer-events: none;
+  }
+
+  .alert-badge {
+    padding: 5px 14px;
+    border-radius: 3px;
+    font-family: var(--display);
+    font-size: 9px; letter-spacing: 2px;
+    font-weight: 700;
+    opacity: 0; transition: opacity 0.3s;
+    border: 1px solid transparent;
+  }
+
+  .alert-badge.glare {
+    background: rgba(255,68,68,0.15);
+    border-color: var(--warn);
+    color: var(--warn);
+    box-shadow: 0 0 12px rgba(255,68,68,0.3);
+  }
+
+  .alert-badge.block {
+    background: rgba(0,255,136,0.1);
+    border-color: var(--ok);
+    color: var(--ok);
+    box-shadow: 0 0 12px rgba(0,255,136,0.25);
+  }
+
+  .alert-badge.show { opacity: 1; }
+
+  /* Sky dome */
+  #skyCanvas {
+    width: 100%; height: 180px; display: block;
+  }
+
+  /* Telemetry */
+  .tele-grid {
+    display: grid; grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  .tele-cell {
+    background: var(--panel2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 10px 10px 8px;
+    position: relative;
+  }
+
+  .tele-label {
+    font-size: 8px; color: var(--muted);
+    letter-spacing: 2px; text-transform: uppercase;
+    margin-bottom: 4px;
+  }
+
+  .tele-val {
+    font-family: var(--display);
+    font-size: 15px; color: var(--accent);
+    font-weight: 700;
+    transition: color 0.3s;
+  }
+
+  .tele-val.warn { color: var(--warn); text-shadow: 0 0 8px rgba(255,68,68,0.5); }
+  .tele-val.ok { color: var(--ok); text-shadow: 0 0 8px rgba(0,255,136,0.4); }
+
+  .tele-unit {
+    font-size: 8px; color: var(--muted);
+    margin-left: 2px;
+  }
+
+  /* Timeline */
+  .timeline-panel {
+    grid-column: 2;
+    margin-top: -6px;
+  }
+
+  #timelineCanvas {
+    width: 100%; height: 70px; display: block;
+    cursor: pointer;
+  }
+
+  /* Status log */
+  .log-box {
+    height: 120px; overflow-y: auto;
+    background: var(--panel2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 8px;
+    font-size: 10px;
+    scrollbar-width: thin;
+    scrollbar-color: var(--dim) transparent;
+  }
+
+  .log-entry {
+    padding: 2px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.03);
+    color: var(--muted);
+    transition: color 0.3s;
+  }
+  .log-entry.new { color: var(--text); }
+  .log-entry .ts { color: var(--accent2); margin-right: 6px; }
+  .log-entry.ev-glare .msg { color: var(--warn); }
+  .log-entry.ev-clear .msg { color: var(--ok); }
+
+  /* Responsive grid fix */
+  @media (max-width: 960px) {
+    main { grid-template-columns: 1fr; grid-template-rows: auto; }
+    .visor-panel { grid-column: 1; grid-row: auto; }
+  }
+</style>
+</head>
+<body>
+<div class="scanline"></div>
+
+<header>
+  <div class="logo">
+    <div class="logo-icon"></div>
+    <div class="logo-text">
+      <h1>PVSS — VIRTUAL SUN VISOR</h1>
+      <p>PREDICTIVE GLARE ELIMINATION SYSTEM  ·  VIT VELLORE</p>
+    </div>
+  </div>
+  <div class="header-right">
+    <div class="status-pill">
+      <div class="led" id="sysLed"></div>
+      <span id="sysStatus">INITIALIZING</span>
+    </div>
+    <div class="sys-time" id="sysTime">--:--</div>
+  </div>
+</header>
+
+<main>
+  <!-- Left panel: controls -->
+  <div class="panel" style="grid-row: 1/3; overflow-y:auto;">
+    <div class="panel-title">Input Parameters</div>
+
+    <div class="control-group">
+      <label>Latitude (°)</label>
+      <input type="number" id="inLat" value="12.9716" step="0.001" min="-90" max="90">
+    </div>
+
+    <div class="control-group">
+      <label>Longitude (°)</label>
+      <input type="number" id="inLon" value="77.5946" step="0.001" min="-180" max="180">
+    </div>
+
+    <div class="control-group">
+      <label>Day of Year</label>
+      <div class="ctrl-row">
+        <input type="range" id="inDoy" min="1" max="365" value="172">
+        <span class="range-val" id="doyVal">172</span>
+      </div>
+    </div>
+
+    <div class="control-group">
+      <label>Manual Time (HH:MM)</label>
+      <input type="time" id="inTime" value="14:00">
+    </div>
+
+    <div class="control-group">
+      <label>Animation Speed</label>
+      <div class="ctrl-row">
+        <input type="range" id="inSpeed" min="1" max="10" value="4">
+        <span class="range-val" id="speedVal">4×</span>
+      </div>
+    </div>
+
+    <button class="btn" id="btnApply">▶ APPLY & UPDATE</button>
+    <button class="btn" id="btnAnim" style="margin-top:8px">⟳ START ANIMATION</button>
+
+    <div style="margin-top: 20px;">
+      <div class="panel-title">System Log</div>
+      <div class="log-box" id="logBox"></div>
+    </div>
+
+    <div style="margin-top: 16px;">
+      <div class="panel-title">About</div>
+      <div style="font-size:9px; color: var(--muted); line-height:1.8; letter-spacing:0.5px;">
+        Computes real-time solar azimuth &amp; altitude using astronomical equations.
+        Detects glare vector to driver eye position. Activates selective LCD darkening
+        on the visor panel only at the computed glare region.
+        <br><br>
+        Location: VIT Vellore, TN<br>
+        Model: Simplified NOAA Solar<br>
+        Glare threshold: ALT &gt; 5°
+      </div>
+    </div>
+  </div>
+
+  <!-- Centre: visor -->
+  <div class="panel visor-panel">
+    <div class="panel-title">LCD Visor Panel — Selective Darkening Array</div>
+    <div class="visor-wrap">
+      <canvas id="visorCanvas" width="640" height="360"></canvas>
+      <div class="visor-overlay-labels">
+        <div class="alert-badge glare" id="badgeGlare">⚠ GLARE DETECTED</div>
+        <div class="alert-badge block" id="badgeBlock">■ BLOCKING ACTIVE</div>
+      </div>
+    </div>
+    <canvas id="timelineCanvas" width="900" height="70"></canvas>
+  </div>
+
+  <!-- Right: telemetry + sky -->
+  <div style="grid-row:1/3; display:flex; flex-direction:column; gap:12px;">
+    <div class="panel">
+      <div class="panel-title">Telemetry</div>
+      <div class="tele-grid">
+        <div class="tele-cell">
+          <div class="tele-label">Azimuth</div>
+          <div class="tele-val" id="tAz">---<span class="tele-unit">°</span></div>
+        </div>
+        <div class="tele-cell">
+          <div class="tele-label">Altitude</div>
+          <div class="tele-val" id="tAlt">---<span class="tele-unit">°</span></div>
+        </div>
+        <div class="tele-cell">
+          <div class="tele-label">Glare</div>
+          <div class="tele-val" id="tGlare">---</div>
+        </div>
+        <div class="tele-cell">
+          <div class="tele-label">Status</div>
+          <div class="tele-val" id="tStatus">---</div>
+        </div>
+        <div class="tele-cell">
+          <div class="tele-label">Patch X</div>
+          <div class="tele-val" id="tPx">---</div>
+        </div>
+        <div class="tele-cell">
+          <div class="tele-label">Patch Y</div>
+          <div class="tele-val" id="tPy">---</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">Sky Dome — Sun Trajectory</div>
+      <canvas id="skyCanvas" width="240" height="180"></canvas>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">Solar Angle Chart</div>
+      <canvas id="chartCanvas" width="240" height="140"></canvas>
+    </div>
+  </div>
+</main>
+
+<script>
+// ─── Solar Math (mirrors Python backend, works offline too) ───────────────────
+function deg2rad(d) { return d * Math.PI / 180; }
+function rad2deg(r) { return r * 180 / Math.PI; }
+
+function solarPosition(lat, lon, hourDecimal, doy) {
+  const latR = deg2rad(lat);
+  const B = deg2rad((360 / 365) * (doy - 81));
+  const EoT = 9.87 * Math.sin(2 * B) - 7.53 * Math.cos(B) - 1.5 * Math.sin(B);
+  const TC = 4 * (lon - 15 * Math.round(lon / 15)) + EoT;
+  const LST = hourDecimal + TC / 60;
+  const HRA = deg2rad(15 * (LST - 12));
+  const decl = deg2rad(23.45 * Math.sin(deg2rad((360 / 365) * (doy - 81))));
+  let sinAlt = Math.sin(latR) * Math.sin(decl) + Math.cos(latR) * Math.cos(decl) * Math.cos(HRA);
+  sinAlt = Math.max(-1, Math.min(1, sinAlt));
+  const altitude = rad2deg(Math.asin(sinAlt));
+  const cosAzDen = Math.cos(latR) * Math.cos(Math.asin(sinAlt));
+  let azimuth = 0;
+  if (Math.abs(cosAzDen) > 1e-9) {
+    const cosAzNum = Math.sin(decl) - Math.sin(latR) * sinAlt;
+    let cosAz = Math.max(-1, Math.min(1, cosAzNum / cosAzDen));
+    azimuth = rad2deg(Math.acos(cosAz));
+    if (Math.sin(HRA) > 0) azimuth = 360 - azimuth;
+  }
+  return { azimuth, altitude };
+}
+
+function getTrajectory(lat, lon, doy) {
+  const pts = [];
+  for (let t = 5; t <= 20; t += 0.25) {
+    const { azimuth, altitude } = solarPosition(lat, lon, t, doy);
+    pts.push({ hour: t, azimuth, altitude });
+  }
+  return pts;
+}
+
+// ─── State ────────────────────────────────────────────────────────────────────
+const state = {
+  lat: 12.9716, lon: 77.5946, doy: 172,
+  hour: 14.0, animating: false,
+  trajectory: [], lastGlare: false
+};
+
+// ─── Canvas refs ──────────────────────────────────────────────────────────────
+const visorCanvas = document.getElementById('visorCanvas');
+const vc = visorCanvas.getContext('2d');
+const skyCanvas = document.getElementById('skyCanvas');
+const sc = skyCanvas.getContext('2d');
+const tlCanvas = document.getElementById('timelineCanvas');
+const tlc = tlCanvas.getContext('2d');
+const chartCanvas = document.getElementById('chartCanvas');
+const cc = chartCanvas.getContext('2d');
+
+// ─── Visor Renderer ───────────────────────────────────────────────────────────
+const VW = 640, VH = 360;
+const EYE_X = VW / 2, EYE_Y = VH * 0.72;
+const CELL = 8;
+
+function sunScreenPos(az, alt) {
+  const azNorm = ((az - 90) % 360) / 360;
+  const sx = ((az - 60) / 240) * VW;
+  const sy = (1 - alt / 90) * VH * 0.55;
+  return { sx: Math.max(10, Math.min(VW - 10, sx)), sy: Math.max(10, sy) };
+}
+
+function glareCenter(sx, sy) {
+  const dx = EYE_X - sx, dy = EYE_Y - sy;
+  const dist = Math.sqrt(dx * dx + dy * dy);
+  if (dist < 1) return { gx: EYE_X, gy: EYE_Y - 40 };
+  const ux = dx / dist, uy = dy / dist;
+  return { gx: sx + ux * dist * 0.35, gy: sy + uy * dist * 0.35 };
+}
+
+function drawVisor(az, alt, glareActive) {
+  vc.clearRect(0, 0, VW, VH);
+
+  // Background — windshield glass look
+  const bgGrad = vc.createLinearGradient(0, 0, 0, VH);
+  bgGrad.addColorStop(0, '#050d1c');
+  bgGrad.addColorStop(1, '#0a1828');
+  vc.fillStyle = bgGrad;
+  vc.fillRect(0, 0, VW, VH);
+
+  // Road scene horizon
+  vc.fillStyle = '#0a1420';
+  vc.fillRect(0, VH * 0.6, VW, VH * 0.4);
+  const roadGrad = vc.createLinearGradient(0, VH * 0.6, 0, VH);
+  roadGrad.addColorStop(0, 'rgba(20,40,70,0.6)');
+  roadGrad.addColorStop(1, 'rgba(5,10,20,0.9)');
+  vc.fillStyle = roadGrad;
+  vc.fillRect(0, VH * 0.6, VW, VH * 0.4);
+
+  // Road lane lines
+  vc.strokeStyle = 'rgba(255,255,255,0.06)';
+  vc.lineWidth = 1;
+  for (let i = 0; i < 8; i++) {
+    const y = VH * 0.65 + i * 14;
+    const xOff = (VW / 2 - 60) + i * 10;
+    vc.beginPath();
+    vc.moveTo(xOff, y); vc.lineTo(VW - xOff, y);
+    vc.stroke();
+  }
+
+  // Grid overlay
+  vc.strokeStyle = 'rgba(0,100,200,0.07)';
+  vc.lineWidth = 0.5;
+  for (let x = 0; x < VW; x += CELL) {
+    vc.beginPath(); vc.moveTo(x, 0); vc.lineTo(x, VH); vc.stroke();
+  }
+  for (let y = 0; y < VH; y += CELL) {
+    vc.beginPath(); vc.moveTo(0, y); vc.lineTo(VW, y); vc.stroke();
+  }
+
+  const { sx, sy } = sunScreenPos(az, alt);
+  const { gx, gy } = glareCenter(sx, sy);
+
+  // Glare halo in sky
+  if (glareActive && alt > 0) {
+    const halo = vc.createRadialGradient(sx, sy, 0, sx, sy, 80);
+    halo.addColorStop(0, 'rgba(255,200,0,0.18)');
+    halo.addColorStop(0.4, 'rgba(255,150,0,0.08)');
+    halo.addColorStop(1, 'transparent');
+    vc.fillStyle = halo;
+    vc.fillRect(0, 0, VW, VH);
+  }
+
+  // Glare ray
+  if (glareActive && alt > 0) {
+    const rayGrad = vc.createLinearGradient(sx, sy, EYE_X, EYE_Y);
+    rayGrad.addColorStop(0, 'rgba(255,180,0,0.6)');
+    rayGrad.addColorStop(0.5, 'rgba(255,100,0,0.3)');
+    rayGrad.addColorStop(1, 'rgba(255,50,0,0.05)');
+    vc.strokeStyle = rayGrad;
+    vc.lineWidth = 2;
+    vc.setLineDash([6, 4]);
+    vc.beginPath(); vc.moveTo(sx, sy); vc.lineTo(EYE_X, EYE_Y); vc.stroke();
+    vc.setLineDash([]);
+  }
+
+  // Darkening patch — pixelated cells
+  if (glareActive && alt > 0) {
+    const PW = 80, PH = 52;
+    const x0 = Math.max(0, gx - PW / 2);
+    const y0 = Math.max(0, gy - PH / 2);
+    for (let cy = y0; cy < y0 + PH; cy += CELL) {
+      for (let cx = x0; cx < x0 + PW; cx += CELL) {
+        const ddx = (cx + CELL/2 - gx) / (PW/2);
+        const ddy = (cy + CELL/2 - gy) / (PH/2);
+        const dist2 = Math.sqrt(ddx*ddx + ddy*ddy);
+        const alpha = Math.max(0, 0.88 - dist2 * 0.5);
+        vc.fillStyle = `rgba(5,12,28,${alpha})`;
+        vc.fillRect(cx, cy, CELL - 1, CELL - 1);
+        vc.strokeStyle = `rgba(0,80,180,${alpha * 0.4})`;
+        vc.lineWidth = 0.5;
+        vc.strokeRect(cx, cy, CELL - 1, CELL - 1);
+      }
+    }
+    // Patch border
+    vc.strokeStyle = 'rgba(255,50,50,0.7)';
+    vc.lineWidth = 1.5;
+    vc.setLineDash([4, 3]);
+    vc.strokeRect(x0 - 2, y0 - 2, PW + 4, PH + 4);
+    vc.setLineDash([]);
+
+    document.getElementById('tPx').textContent = gx.toFixed(1);
+    document.getElementById('tPy').textContent = gy.toFixed(1);
+  } else {
+    document.getElementById('tPx').textContent = '---';
+    document.getElementById('tPy').textContent = '---';
+  }
+
+  // Sun marker
+  if (alt > -5) {
+    const sunGrad = vc.createRadialGradient(sx, sy, 0, sx, sy, 22);
+    sunGrad.addColorStop(0, 'rgba(255,255,150,0.9)');
+    sunGrad.addColorStop(0.3, 'rgba(255,200,0,0.5)');
+    sunGrad.addColorStop(1, 'transparent');
+    vc.fillStyle = sunGrad;
+    vc.beginPath(); vc.arc(sx, sy, 22, 0, Math.PI * 2); vc.fill();
+
+    vc.fillStyle = '#ffee44';
+    vc.beginPath(); vc.arc(sx, sy, 7, 0, Math.PI * 2); vc.fill();
+    vc.strokeStyle = '#ff9900';
+    vc.lineWidth = 1.5; vc.stroke();
+
+    // Sun label
+    vc.fillStyle = 'rgba(255,220,80,0.7)';
+    vc.font = '9px Share Tech Mono';
+    vc.fillText(`ALT ${alt.toFixed(1)}°`, sx + 12, sy - 10);
+    vc.fillText(`AZ ${az.toFixed(1)}°`, sx + 12, sy + 2);
+  }
+
+  // Eye marker
+  vc.fillStyle = '#00d4ff';
+  vc.beginPath(); vc.arc(EYE_X, EYE_Y, 7, 0, Math.PI * 2); vc.fill();
+  vc.strokeStyle = 'rgba(0,212,255,0.4)';
+  vc.lineWidth = 1; vc.beginPath(); vc.arc(EYE_X, EYE_Y, 14, 0, Math.PI * 2); vc.stroke();
+  vc.beginPath(); vc.arc(EYE_X, EYE_Y, 22, 0, Math.PI * 2); vc.stroke();
+  vc.fillStyle = 'rgba(0,212,255,0.6)';
+  vc.font = '9px Share Tech Mono';
+  vc.fillText('EYE REF', EYE_X + 16, EYE_Y + 3);
+
+  // Corner watermarks
+  vc.fillStyle = 'rgba(0,80,150,0.5)';
+  vc.font = '9px Share Tech Mono';
+  vc.fillText('PVSS-v1.0  |  VIT VELLORE', 8, VH - 8);
+  vc.fillText(`LAT ${state.lat.toFixed(4)}°  LON ${state.lon.toFixed(4)}°`, VW - 200, VH - 8);
+}
+
+// ─── Sky dome ─────────────────────────────────────────────────────────────────
+function drawSky(trajectory, currentAz, currentAlt) {
+  const W = skyCanvas.width, H = skyCanvas.height;
+  sc.clearRect(0, 0, W, H);
+  const cx = W / 2, cy = H - 12, R = H - 24;
+
+  // Sky bg
+  const skyBg = sc.createRadialGradient(cx, cy, 0, cx, cy, R);
+  skyBg.addColorStop(0, '#0a2040');
+  skyBg.addColorStop(1, '#050810');
+  sc.fillStyle = skyBg;
+  sc.beginPath(); sc.arc(cx, cy, R, Math.PI, 0); sc.closePath(); sc.fill();
+
+  // Altitude rings
+  [30, 60, 90].forEach(a => {
+    const r = R * (1 - a / 90);
+    sc.strokeStyle = 'rgba(0,80,150,0.25)';
+    sc.lineWidth = 0.8;
+    sc.beginPath(); sc.arc(cx, cy, r, Math.PI, 0); sc.stroke();
+    sc.fillStyle = 'rgba(0,100,200,0.35)';
+    sc.font = '8px Share Tech Mono';
+    sc.fillText(a + '°', cx + r + 2, cy - 2);
+  });
+
+  // Horizon
+  sc.strokeStyle = '#0d3060';
+  sc.lineWidth = 1.5;
+  sc.beginPath(); sc.moveTo(cx - R, cy); sc.lineTo(cx + R, cy); sc.stroke();
+  sc.fillStyle = '#1a4060'; sc.font = '8px Share Tech Mono';
+  sc.fillText('E', cx - R - 10, cy + 3);
+  sc.fillText('W', cx + R + 3, cy + 3);
+  sc.fillText('Z', cx - 4, cy - R + 4);
+
+  function skyXY(az, alt) {
+    const altR = Math.max(0, alt);
+    const r = R * (1 - altR / 90);
+    const azR = deg2rad(az - 180);
+    return { x: cx + r * Math.sin(azR), y: cy - r * Math.abs(Math.cos(azR)) * 0.5 };
+  }
+
+  // Trajectory trail
+  sc.strokeStyle = 'rgba(255,150,0,0.35)';
+  sc.lineWidth = 1.5;
+  sc.beginPath();
+  let started = false;
+  trajectory.forEach(p => {
+    if (p.altitude < 0) return;
+    const { x, y } = skyXY(p.azimuth, p.altitude);
+    if (!started) { sc.moveTo(x, y); started = true; } else sc.lineTo(x, y);
+  });
+  sc.stroke();
+
+  // Current sun
+  if (currentAlt > 0) {
+    const { x, y } = skyXY(currentAz, currentAlt);
+    const sg = sc.createRadialGradient(x, y, 0, x, y, 12);
+    sg.addColorStop(0, 'rgba(255,220,0,0.9)');
+    sg.addColorStop(1, 'transparent');
+    sc.fillStyle = sg;
+    sc.beginPath(); sc.arc(x, y, 12, 0, Math.PI * 2); sc.fill();
+    sc.fillStyle = '#ffee44';
+    sc.beginPath(); sc.arc(x, y, 5, 0, Math.PI * 2); sc.fill();
+
+    sc.strokeStyle = '#ff8800';
+    sc.lineWidth = 1;
+    sc.beginPath(); sc.moveTo(cx, cy); sc.lineTo(x, y); sc.stroke();
+  }
+
+  sc.fillStyle = 'rgba(0,150,255,0.5)';
+  sc.font = '8px Share Tech Mono';
+  sc.fillText(`ALT:${currentAlt.toFixed(1)}° AZ:${currentAz.toFixed(1)}°`, 4, H - 2);
+}
+
+// ─── Altitude Chart ───────────────────────────────────────────────────────────
+function drawChart(trajectory, currentHour) {
+  const W = chartCanvas.width, H = chartCanvas.height;
+  cc.clearRect(0, 0, W, H);
+  const pad = { l: 28, r: 8, t: 8, b: 20 };
+  const cW = W - pad.l - pad.r, cH = H - pad.t - pad.b;
+
+  cc.fillStyle = '#060c18';
+  cc.fillRect(0, 0, W, H);
+  cc.strokeStyle = '#0d2a4a'; cc.lineWidth = 1;
+  cc.strokeRect(pad.l, pad.t, cW, cH);
+
+  // Grid
+  [0, 30, 60, 90].forEach(a => {
+    const y = pad.t + cH - (a / 90) * cH;
+    cc.strokeStyle = 'rgba(0,80,150,0.2)'; cc.lineWidth = 0.5;
+    cc.beginPath(); cc.moveTo(pad.l, y); cc.lineTo(pad.l + cW, y); cc.stroke();
+    cc.fillStyle = '#1a4060'; cc.font = '7px Share Tech Mono';
+    cc.fillText(a, 2, y + 3);
+  });
+
+  const hoursArr = trajectory.map(p => p.hour);
+  const hMin = Math.min(...hoursArr), hMax = Math.max(...hoursArr);
+
+  function toX(h) { return pad.l + ((h - hMin) / (hMax - hMin)) * cW; }
+  function toY(a) { return pad.t + cH - (Math.max(0, a) / 90) * cH; }
+
+  // Altitude curve
+  cc.beginPath();
+  cc.strokeStyle = '#00d4ff'; cc.lineWidth = 1.5;
+  trajectory.forEach((p, i) => {
+    if (i === 0) cc.moveTo(toX(p.hour), toY(p.altitude));
+    else cc.lineTo(toX(p.hour), toY(p.altitude));
+  });
+  cc.stroke();
+
+  // Fill under curve
+  cc.beginPath();
+  trajectory.forEach((p, i) => {
+    if (i === 0) cc.moveTo(toX(p.hour), toY(p.altitude));
+    else cc.lineTo(toX(p.hour), toY(p.altitude));
+  });
+  cc.lineTo(toX(hMax), pad.t + cH);
+  cc.lineTo(pad.l, pad.t + cH); cc.closePath();
+  cc.fillStyle = 'rgba(0,100,200,0.08)'; cc.fill();
+
+  // Current time line
+  const cx2 = toX(currentHour);
+  cc.strokeStyle = 'rgba(255,200,0,0.7)'; cc.lineWidth = 1.5;
+  cc.setLineDash([3, 3]);
+  cc.beginPath(); cc.moveTo(cx2, pad.t); cc.lineTo(cx2, pad.t + cH); cc.stroke();
+  cc.setLineDash([]);
+
+  // Hour labels
+  [6, 9, 12, 15, 18].forEach(h => {
+    cc.fillStyle = '#1a4060'; cc.font = '7px Share Tech Mono';
+    cc.fillText(h, toX(h) - 4, H - 4);
+  });
+}
+
+// ─── Timeline ─────────────────────────────────────────────────────────────────
+function drawTimeline(currentHour) {
+  const W = tlCanvas.width, H = tlCanvas.height;
+  tlc.clearRect(0, 0, W, H);
+  tlc.fillStyle = '#060c18'; tlc.fillRect(0, 0, W, H);
+
+  const pad = 30, trackH = 16, trackY = H / 2 - trackH / 2;
+  const trackW = W - pad * 2;
+
+  const bg = tlc.createLinearGradient(pad, 0, W - pad, 0);
+  bg.addColorStop(0, '#040810');
+  bg.addColorStop(0.3, '#0a2040');
+  bg.addColorStop(0.7, '#0a2040');
+  bg.addColorStop(1, '#040810');
+  tlc.fillStyle = bg;
+  tlc.roundRect(pad, trackY, trackW, trackH, 3);
+  tlc.fill();
+
+  const hMin = 5, hMax = 20;
+  function hourToX(h) { return pad + ((h - hMin) / (hMax - hMin)) * trackW; }
+
+  // Glare zones (alt > 5)
+  state.trajectory.forEach((p, i) => {
+    if (p.altitude > 5 && i < state.trajectory.length - 1) {
+      const x1 = hourToX(p.hour);
+      const x2 = hourToX(state.trajectory[i + 1].hour);
+      tlc.fillStyle = 'rgba(255,80,0,0.35)';
+      tlc.fillRect(x1, trackY, x2 - x1, trackH);
+    }
+  });
+
+  // Hour ticks
+  for (let h = 5; h <= 20; h++) {
+    const x = hourToX(h);
+    tlc.strokeStyle = 'rgba(0,80,150,0.4)'; tlc.lineWidth = 0.8;
+    tlc.beginPath(); tlc.moveTo(x, trackY); tlc.lineTo(x, trackY + trackH); tlc.stroke();
+    if (h % 3 === 0) {
+      tlc.fillStyle = '#1a4060'; tlc.font = '8px Share Tech Mono';
+      tlc.fillText(h + ':00', x - 10, trackY + trackH + 12);
+    }
+  }
+
+  // Current position
+  const cx = hourToX(currentHour);
+  tlc.fillStyle = '#ffcc00';
+  tlc.beginPath(); tlc.arc(cx, H / 2, 7, 0, Math.PI * 2); tlc.fill();
+  tlc.strokeStyle = 'rgba(255,200,0,0.4)'; tlc.lineWidth = 1.5;
+  tlc.beginPath(); tlc.arc(cx, H / 2, 12, 0, Math.PI * 2); tlc.stroke();
+
+  const h = Math.floor(currentHour), m = Math.round((currentHour - h) * 60);
+  tlc.fillStyle = '#ffcc00'; tlc.font = '9px Share Tech Mono';
+  tlc.fillText(`${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`, cx - 14, 12);
+}
+
+// ─── Update full UI ───────────────────────────────────────────────────────────
+function update() {
+  const { lat, lon, doy, hour } = state;
+  const { azimuth: az, altitude: alt } = solarPosition(lat, lon, hour, doy);
+  const glareActive = alt > 5;
+
+  drawVisor(az, alt, glareActive);
+  drawSky(state.trajectory, az, alt);
+  drawTimeline(hour);
+  drawChart(state.trajectory, hour);
+
+  const h = Math.floor(hour), m = Math.round((hour - h) * 60);
+  const ts = `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
+
+  document.getElementById('sysTime').textContent = ts;
+  document.getElementById('tAz').innerHTML = `${az.toFixed(1)}<span class="tele-unit">°</span>`;
+  document.getElementById('tAlt').innerHTML = `${alt.toFixed(1)}<span class="tele-unit">°</span>`;
+
+  if (glareActive) {
+    document.getElementById('tGlare').textContent = 'YES';
+    document.getElementById('tGlare').className = 'tele-val warn';
+    document.getElementById('tStatus').textContent = 'ACTIVE';
+    document.getElementById('tStatus').className = 'tele-val ok';
+    document.getElementById('badgeGlare').classList.add('show');
+    document.getElementById('badgeBlock').classList.add('show');
+    document.getElementById('sysLed').className = 'led warn';
+    document.getElementById('sysStatus').textContent = 'GLARE DETECTED';
+  } else {
+    document.getElementById('tGlare').textContent = 'NO';
+    document.getElementById('tGlare').className = 'tele-val';
+    document.getElementById('tStatus').textContent = 'STANDBY';
+    document.getElementById('tStatus').className = 'tele-val';
+    document.getElementById('badgeGlare').classList.remove('show');
+    document.getElementById('badgeBlock').classList.remove('show');
+    document.getElementById('sysLed').className = 'led active';
+    document.getElementById('sysStatus').textContent = 'SYSTEM ONLINE';
+  }
+
+  if (glareActive !== state.lastGlare) {
+    addLog(ts, glareActive ? `Glare onset — ALT ${alt.toFixed(1)}°` : `Glare cleared — ALT ${alt.toFixed(1)}°`,
+           glareActive ? 'ev-glare' : 'ev-clear');
+    state.lastGlare = glareActive;
+  }
+}
+
+function addLog(ts, msg, cls = '') {
+  const box = document.getElementById('logBox');
+  const el = document.createElement('div');
+  el.className = `log-entry new ${cls}`;
+  el.innerHTML = `<span class="ts">${ts}</span><span class="msg">${msg}</span>`;
+  box.prepend(el);
+  setTimeout(() => el.classList.remove('new'), 2000);
+  while (box.children.length > 30) box.removeChild(box.lastChild);
+}
+
+// ─── Animation ────────────────────────────────────────────────────────────────
+let animFrame = null;
+let animHour = 5.0;
+
+function animStep() {
+  if (!state.animating) return;
+  const speed = parseInt(document.getElementById('inSpeed').value);
+  animHour += speed * 0.004;
+  if (animHour > 20) animHour = 5;
+  state.hour = animHour;
+  document.getElementById('inTime').value =
+    String(Math.floor(animHour)).padStart(2,'0') + ':' +
+    String(Math.round((animHour % 1) * 60)).padStart(2,'0');
+  update();
+  animFrame = requestAnimationFrame(animStep);
+}
+
+document.getElementById('btnAnim').addEventListener('click', () => {
+  state.animating = !state.animating;
+  const btn = document.getElementById('btnAnim');
+  if (state.animating) {
+    animHour = state.hour;
+    btn.textContent = '■ STOP ANIMATION';
+    btn.classList.add('active-anim');
+    addLog('--:--', 'Animation started', '');
+    animStep();
+  } else {
+    btn.textContent = '⟳ START ANIMATION';
+    btn.classList.remove('active-anim');
+    if (animFrame) cancelAnimationFrame(animFrame);
+    addLog('--:--', 'Animation stopped', '');
+  }
+});
+
+document.getElementById('btnApply').addEventListener('click', () => {
+  state.lat = parseFloat(document.getElementById('inLat').value);
+  state.lon = parseFloat(document.getElementById('inLon').value);
+  state.doy = parseInt(document.getElementById('inDoy').value);
+  const t = document.getElementById('inTime').value.split(':');
+  state.hour = parseInt(t[0]) + parseInt(t[1]) / 60;
+  state.trajectory = getTrajectory(state.lat, state.lon, state.doy);
+  addLog('--:--', `Config applied — LAT ${state.lat.toFixed(4)} LON ${state.lon.toFixed(4)}`, '');
+  update();
+});
+
+document.getElementById('inDoy').addEventListener('input', function() {
+  document.getElementById('doyVal').textContent = this.value;
+});
+
+document.getElementById('inSpeed').addEventListener('input', function() {
+  document.getElementById('speedVal').textContent = this.value + '×';
+});
+
+// Click timeline to seek
+tlCanvas.addEventListener('click', (e) => {
+  const rect = tlCanvas.getBoundingClientRect();
+  const x = (e.clientX - rect.left) * (tlCanvas.width / rect.width);
+  const pad = 30;
+  const frac = Math.max(0, Math.min(1, (x - pad) / (tlCanvas.width - pad * 2)));
+  state.hour = 5 + frac * 15;
+  animHour = state.hour;
+  const h = Math.floor(state.hour), m = Math.round((state.hour % 1) * 60);
+  document.getElementById('inTime').value = String(h).padStart(2,'0') + ':' + String(m).padStart(2,'0');
+  update();
+});
+
+// ─── Init ─────────────────────────────────────────────────────────────────────
+state.trajectory = getTrajectory(state.lat, state.lon, state.doy);
+addLog('00:00', 'PVSS system initialized', '');
+addLog('00:00', `Location: LAT ${state.lat} LON ${state.lon}`, '');
+update();
+</script>
+</body>
+</html>
